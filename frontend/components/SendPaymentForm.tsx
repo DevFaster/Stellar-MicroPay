@@ -148,6 +148,7 @@ function SendPaymentForm({
   // SNS-specific state: live resolution preview as the user types
   const [snsResolving, setSnsResolving] = useState(false);
   const [snsResolved, setSnsResolved] = useState<string | null>(null);
+  const [snsResolvedAddress, setSnsResolvedAddress] = useState<string | null>(null);
   const [snsError, setSnsError] = useState<string | null>(null);
   const snsDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [customAsset, setCustomAsset] = useState<CustomAsset>({ code: "", issuer: "" });
@@ -171,6 +172,7 @@ function SendPaymentForm({
   const [scannerError, setScannerError] = useState<string | null>(null);
   const [destAccountWarning, setDestAccountWarning] = useState<string | null>(null);
   const [isCheckingDest, setIsCheckingDest] = useState(false);
+  const [paymentIdempotencyKey, setPaymentIdempotencyKey] = useState<string | null>(null);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -178,6 +180,11 @@ function SendPaymentForm({
   const frameRequestRef = useRef<number | null>(null);
   const isDetectingRef = useRef(false);
   const destinationInputRef = useRef<HTMLInputElement | null>(null);
+  const destinationValidationRequestRef = useRef(0);
+  const destinationValidationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isSubmittingRef = useRef(false);
+  const builtTxRef = useRef<ReturnType<typeof buildPaymentTransaction> | null>(null);
+  const signedXdrRef = useRef<string | null>(null);
 
   // Power-user shortcut: press "S" (when not already typing in a field and no
   // modal is open) to jump focus to the destination input (#264).
@@ -408,7 +415,36 @@ function SendPaymentForm({
     };
   }, [destination]);
 
-  // Pre-validate destination account existence on the Stellar network (#294)
+  const validateDestinationAccount = useCallback(async (address: string) => {
+    if (!isValidStellarAddress(address)) {
+      setDestAccountWarning(null);
+      setIsCheckingDest(false);
+      return;
+    }
+
+    const requestId = ++destinationValidationRequestRef.current;
+    setIsCheckingDest(true);
+    setDestAccountWarning(null);
+    try {
+      await server.loadAccount(address.trim());
+      if (destinationValidationRequestRef.current === requestId) {
+        setDestAccountWarning(null);
+      }
+    } catch {
+      if (destinationValidationRequestRef.current === requestId) {
+        setDestAccountWarning(
+          selectedAsset === "XLM"
+            ? "This account doesn't exist yet. Sending ≥ 1 XLM will create it."
+            : "This account doesn't exist on the Stellar network."
+        );
+      }
+    } finally {
+      if (destinationValidationRequestRef.current === requestId) {
+        setIsCheckingDest(false);
+      }
+    }
+  }, [selectedAsset, server]);
+
   useEffect(() => {
     if (!isValidStellarAddress(destination)) {
       setDestAccountWarning(null);
@@ -418,7 +454,8 @@ function SendPaymentForm({
 
     setIsCheckingDest(true);
     setDestAccountWarning(null);
-    server.loadAccount(trimmedAddress)
+    const requestId = ++destinationValidationRequestRef.current;
+    server.loadAccount(destination.trim())
       .then(() => {
         if (destinationValidationRequestRef.current === requestId) setDestAccountWarning(null);
       })
@@ -461,6 +498,11 @@ function SendPaymentForm({
       }
     };
   }, [destination, validateDestinationAccount]);
+
+  useEffect(() => {
+    builtTxRef.current = null;
+    signedXdrRef.current = null;
+  }, [destination, amount, memo, selectedAsset, isTipOnChain]);
 
   const xlmBal = parseFloat(xlmBalance);
   const usdcBal = usdcBalance ? parseFloat(usdcBalance) : 0;
@@ -664,10 +706,15 @@ function SendPaymentForm({
   };
 
   const executeSend = async () => {
+    if (isSubmittingRef.current) return;
     if (!canSubmit) return;
+    isSubmittingRef.current = true;
     startTracker();
     let activeStep: PaymentStepId = "building";
     try {
+      if (!paymentIdempotencyKey) {
+        setPaymentIdempotencyKey(crypto.randomUUID());
+      }
       markStepStarted("building");
       setStatus("building");
       const paymentDestination = await resolveDestinationForPayment();
@@ -686,26 +733,36 @@ function SendPaymentForm({
           ? { code: customAssetEntry.code, issuer: customAssetEntry.issuer }
           : "XLM";
 
-      const tx = isTipOnChain
-        ? await buildSorobanTipTransaction({
-          fromPublicKey: publicKey,
-          toPublicKey: paymentDestination,
-          amount: amountNum.toFixed(7),
-        })
-        : await buildPaymentTransaction({
-            fromPublicKey: publicKey,
-            toPublicKey: paymentDestination,
-            amount: amountNum.toFixed(7),
-            memo: memo.trim() || undefined,
-            asset: assetParam,
-          });
+      let unsignedXDR = builtTxRef.current;
+      if (!unsignedXDR) {
+        const tx = isTipOnChain
+          ? await buildSorobanTipTransaction({
+              fromPublicKey: publicKey,
+              toPublicKey: paymentDestination,
+              amount: amountNum.toFixed(7),
+            })
+          : await buildPaymentTransaction({
+              fromPublicKey: publicKey,
+              toPublicKey: paymentDestination,
+              amount: amountNum.toFixed(7),
+              memo: memo.trim() || undefined,
+              asset: assetParam,
+            });
+        unsignedXDR = tx.toXDR();
+        builtTxRef.current = unsignedXDR;
+      }
       markStepCompleted("building");
 
       activeStep = "signing";
       markStepStarted("signing");
       setStatus("signing");
-      const { signedXDR, error: signError } = await signTransactionWithWallet(tx.toXDR());
-      if (signError || !signedXDR) throw new Error(signError || "Signing failed");
+      let signedXDR = signedXdrRef.current;
+      if (!signedXDR) {
+        const { signedXDR: newSignedXDR, error: signError } = await signTransactionWithWallet(unsignedXDR);
+        if (signError || !newSignedXDR) throw new Error(signError || "Signing failed");
+        signedXDR = newSignedXDR;
+        signedXdrRef.current = signedXDR;
+      }
       markStepCompleted("signing");
 
       activeStep = "submitting";
@@ -725,12 +782,17 @@ function SendPaymentForm({
       saveRecipient(trimmedDestination);
       addToast(`Payment sent! Tx: ${result.hash.slice(0, 8)}…`, "success");
       onSuccess?.(result.hash);
+      builtTxRef.current = null;
+      signedXdrRef.current = null;
+      setPaymentIdempotencyKey(null);
     } catch (err: any) {
       const message = err?.message || "An unexpected error occurred";
       setError(message);
       markStepFailed(activeStep, message);
       setStatus("error");
       addToast(message, "error", () => { setStatus("idle"); void executeSend(); });
+    } finally {
+      isSubmittingRef.current = false;
     }
   };
 
@@ -1122,6 +1184,7 @@ function SendPaymentForm({
         isTipOnChain={isTipOnChain}
         onCancel={() => setIsConfirmOpen(false)}
         onConfirm={() => { setIsConfirmOpen(false); executeSend(); }}
+        disabled={status !== "idle"}
       />
 
       <PaymentStatusModal
@@ -1148,9 +1211,10 @@ interface SendConfirmationModalProps {
   isTipOnChain: boolean;
   onCancel: () => void;
   onConfirm: () => void;
+  disabled?: boolean;
 }
 
-function SendConfirmationModal({ isOpen, destination, amount, asset, memo, estimatedFee, onCancel, onConfirm }: SendConfirmationModalProps) {
+function SendConfirmationModal({ isOpen, destination, amount, asset, memo, estimatedFee, onCancel, onConfirm, disabled }: SendConfirmationModalProps) {
   const { t } = useTranslation("sendPayment");
   if (!isOpen) return null;
   const shortened = shortenAddress(destination, 8);
@@ -1183,7 +1247,7 @@ function SendConfirmationModal({ isOpen, destination, amount, asset, memo, estim
         </div>
         <div className="mt-8 flex gap-3">
           <button onClick={onCancel} className="flex-1 rounded-xl border border-white/10 py-3 text-sm font-semibold text-white hover:bg-white/5 transition-all">{t("cancel")}</button>
-          <button onClick={onConfirm} className="flex-1 btn-primary py-3">{t("confirm_sign")}</button>
+          <button onClick={onConfirm} disabled={disabled} className="flex-1 btn-primary py-3 disabled:opacity-50 disabled:cursor-not-allowed">{t("confirm_sign")}</button>
         </div>
       </div>
     </div>
