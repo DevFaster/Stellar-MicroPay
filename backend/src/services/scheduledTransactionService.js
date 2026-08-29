@@ -1,21 +1,99 @@
 "use strict";
 
-require("dotenv").config();
+const fs = require("fs");
+const path = require("path");
 
-// In-memory storage for scheduled transactions
-// In a production environment, this would be replaced with a database
+const DATA_DIR = path.join(__dirname, "..", "data");
+const DATA_FILE = path.join(DATA_DIR, "scheduled-transactions.json");
+
 const scheduledTransactions = new Map();
 let transactionIdCounter = 1;
 
-/**
- * Store a pre-signed transaction for future submission
- * @param {string} signedXDR - The signed transaction XDR
- * @param {Date} submitAt - Timestamp when the transaction should be submitted
- * @param {string} publicKey - The account public key that owns this transaction
- * @returns {Object} The stored transaction with ID
- */
-function scheduleTransaction(signedXDR, submitAt, publicKey) {
-  // Validate inputs
+function ensureDataDir() {
+  if (!fs.existsSync(DATA_DIR)) {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+  }
+}
+
+function loadFromDisk() {
+  try {
+    ensureDataDir();
+    if (fs.existsSync(DATA_FILE)) {
+      const content = fs.readFileSync(DATA_FILE, "utf8");
+      const data = JSON.parse(content);
+      scheduledTransactions.clear();
+      for (const [id, tx] of Object.entries(data.transactions || {})) {
+        scheduledTransactions.set(Number(id), tx);
+      }
+      const maxId = Math.max(
+        ...Object.keys(data.transactions || {}).map(Number),
+        0
+      );
+      transactionIdCounter = maxId + 1;
+    }
+  } catch (err) {
+    console.error("Failed to load scheduled transactions from disk", err);
+  }
+}
+
+async function persistToDisk() {
+  try {
+    ensureDataDir();
+    const transactions = {};
+    for (const [id, tx] of scheduledTransactions.entries()) {
+      transactions[id] = tx;
+    }
+    const data = {
+      nextId: transactionIdCounter,
+      transactions,
+    };
+    fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
+  } catch (err) {
+    console.error("Failed to persist scheduled transactions to disk", err);
+  }
+}
+
+async function recoverPendingJobs() {
+  const now = Date.now();
+  const recovered = [];
+  for (const [id, tx] of scheduledTransactions.entries()) {
+    if (tx.attempts >= 3) {
+      scheduledTransactions.delete(id);
+    } else {
+      recovered.push(tx);
+    }
+  }
+  await persistToDisk();
+  return recovered;
+}
+
+function reset() {
+  scheduledTransactions.clear();
+  transactionIdCounter = 1;
+}
+
+function clearAll() {
+  reset();
+  try {
+    if (fs.existsSync(DATA_FILE)) {
+      fs.unlinkSync(DATA_FILE);
+    }
+  } catch (err) {
+    console.error("Failed to clear scheduled transactions file", err);
+  }
+}
+
+loadFromDisk();
+
+function validatePublicKey(publicKey) {
+  if (!/^G[A-Z0-9]{55}$/.test(publicKey)) {
+    const error = new Error("Invalid Stellar public key format");
+    error.status = 400;
+    throw error;
+  }
+}
+
+async function scheduleTransaction(signedXDR, submitAt, publicKey) {
   if (!signedXDR || typeof signedXDR !== "string") {
     const error = new Error("Signed XDR is required and must be a string");
     error.status = 400;
@@ -28,42 +106,28 @@ function scheduleTransaction(signedXDR, submitAt, publicKey) {
     throw error;
   }
 
-  // Validate public key format
-  if (!/^G[A-Z0-9]{55}$/.test(publicKey)) {
-    const error = new Error("Invalid Stellar public key format");
-    error.status = 400;
-    throw error;
-  }
+  validatePublicKey(publicKey);
 
   const id = transactionIdCounter++;
   const scheduledTx = {
     id,
     signedXDR,
-    submitAt: submitAt.getTime(), // Store as timestamp for easier comparison
+    submitAt: submitAt.getTime(),
     publicKey,
     attempts: 0,
     lastError: null,
     createdAt: new Date().getTime(),
-    paused: false, // New: pause state
-    pausedAt: null, // New: timestamp when paused
+    paused: false,
+    pausedAt: null,
   };
 
   scheduledTransactions.set(id, scheduledTx);
+  await persistToDisk();
   return scheduledTx;
 }
 
-/**
- * Get pending scheduled transactions for a public key
- * @param {string} publicKey - The account public key
- * @returns {Array} Array of scheduled transactions
- */
 function getPendingTransactions(publicKey) {
-  // Validate public key format
-  if (!/^G[A-Z0-9]{55}$/.test(publicKey)) {
-    const error = new Error("Invalid Stellar public key format");
-    error.status = 400;
-    throw error;
-  }
+  validatePublicKey(publicKey);
 
   const now = Date.now();
   const pending = [];
@@ -81,103 +145,70 @@ function getPendingTransactions(publicKey) {
     }
   }
 
-  // Sort by submitAt ascending (earliest first)
   return pending.sort((a, b) => a.submitAt - b.submitAt);
 }
 
-/**
- * Get a scheduled transaction by ID
- * @param {number} id - The transaction ID
- * @returns {Object|null} The transaction or null if not found
- */
 function getTransactionById(id) {
   return scheduledTransactions.get(id) || null;
 }
 
-/**
- * Cancel a scheduled transaction
- * @param {number} id - The transaction ID
- * @returns {boolean} True if cancelled, false if not found
- */
-function cancelTransaction(id) {
-  return scheduledTransactions.delete(id);
+async function cancelTransaction(id) {
+  const result = scheduledTransactions.delete(id);
+  if (result) {
+    await persistToDisk();
+  }
+  return result;
 }
 
-/**
- * Get transactions that are due for submission (submitAt <= now)
- * @returns {Array} Array of transactions ready for submission
- */
 function getDueTransactions() {
   const now = Date.now();
   const due = [];
 
   for (const [, tx] of scheduledTransactions.entries()) {
-    // Only include transactions that:
-    // 1. Are due for submission (submitAt <= now)
-    // 2. Haven't exceeded max attempts (attempts < 3)
-    // 3. Are not paused (paused !== true)
-    // 4. Haven't been successfully submitted yet (we don't track success separately,
-    //    but we'll assume if it's still in the queue, it hasn't succeeded)
     if (tx.submitAt <= now && tx.attempts < 3 && !tx.paused) {
       due.push(tx);
     }
   }
 
-  // Sort by submitAt ascending (oldest first)
   return due.sort((a, b) => a.submitAt - b.submitAt);
 }
 
-/**
- * Increment the attempt counter for a transaction
- * @param {number} id - The transaction ID
- * @param {string|null} error - Error message if submission failed, null if successful
- */
-function incrementAttempt(id, error = null) {
+async function incrementAttempt(id, error = null) {
   const tx = scheduledTransactions.get(id);
   if (tx) {
     tx.attempts += 1;
     tx.lastError = error || null;
-    // If successful, we could remove it from the queue, but for now
-    // we'll let the caller handle removal if needed
+    await persistToDisk();
   }
 }
 
-/**
- * Remove a transaction from the queue (after successful submission or final failure)
- * @param {number} id - The transaction ID
- * @returns {boolean} True if removed, false if not found
- */
-function removeTransaction(id) {
-  return scheduledTransactions.delete(id);
+async function removeTransaction(id) {
+  const result = scheduledTransactions.delete(id);
+  if (result) {
+    await persistToDisk();
+  }
+  return result;
 }
 
-/**
- * Pause a scheduled transaction
- * @param {number} id - The transaction ID
- * @returns {boolean} True if paused, false if not found
- */
-function pauseTransaction(id) {
+async function pauseTransaction(id) {
   const tx = scheduledTransactions.get(id);
   if (tx) {
     tx.paused = true;
     tx.pausedAt = Date.now();
-    logger.info(JSON.stringify({ type: "transaction_paused", id }));
+    console.info("transaction_paused", JSON.stringify({ type: "transaction_paused", id }));
+    await persistToDisk();
     return true;
   }
   return false;
 }
 
-/**
- * Resume a paused scheduled transaction
- * @param {number} id - The transaction ID
- * @returns {boolean} True if resumed, false if not found
- */
-function resumeTransaction(id) {
+async function resumeTransaction(id) {
   const tx = scheduledTransactions.get(id);
   if (tx) {
     tx.paused = false;
     tx.pausedAt = null;
-    logger.info(JSON.stringify({ type: "transaction_resumed", id }));
+    console.info("transaction_resumed", JSON.stringify({ type: "transaction_resumed", id }));
+    await persistToDisk();
     return true;
   }
   return false;
@@ -193,4 +224,8 @@ module.exports = {
   removeTransaction,
   pauseTransaction,
   resumeTransaction,
+  recoverPendingJobs,
+  reloadFromDisk: loadFromDisk,
+  reset,
+  clearAll,
 };
