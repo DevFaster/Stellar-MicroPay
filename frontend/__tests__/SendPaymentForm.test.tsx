@@ -80,9 +80,10 @@ jest.mock("@/lib/stellar", () => ({
   buildReceiptMintTransaction: jest.fn(),
   CONTRACT_ID: null,
   explorerUrl: jest.fn((hash) => `https://testnet.expert.stellar.org/tx/${hash}`),
-  isValidStellarAddress: jest.fn(() => true),
-  isValidFederationAddress: jest.fn(() => false),
+  isValidStellarAddress: jest.fn((addr) => addr.startsWith("G") && addr.length === 56),
+  isValidFederationAddress: jest.fn((addr) => addr.includes("*")),
   isStellarName: jest.fn(() => false),
+  resolveStellarName: jest.fn(),
   resolveFederationAddress: jest.fn(),
   resolveStellarName: jest.fn(),
   signTransactionWithWallet: jest.fn(),
@@ -120,9 +121,26 @@ const defaultProps = {
   onError: jest.fn(),
 };
 
-const validDestination = "GABCDEFGHIJKLMNOPQRSTUVWXYZ2345678901234567890";
+import SendPaymentForm from "../components/SendPaymentForm";
+import * as stellarModule from "@/lib/stellar";
+import * as walletModule from "@/lib/wallet";
+import { TEST_PUBLIC_KEY_A, TEST_PUBLIC_KEY_B } from "./fixtures/stellar";
+
+const mockBuildPaymentTransaction = stellarModule.buildPaymentTransaction as jest.Mock;
+const mockIsValidStellarAddress = stellarModule.isValidStellarAddress as jest.Mock;
+const mockSubmitTransaction = stellarModule.submitTransaction as jest.Mock;
+const mockFetchNetworkFeeStats = stellarModule.fetchNetworkFeeStats as jest.Mock;
+const mockSignTransactionWithWallet = walletModule.signTransactionWithWallet as jest.Mock;
 
 describe("SendPaymentForm", () => {
+  const defaultProps = {
+    publicKey: TEST_PUBLIC_KEY_A,
+    xlmBalance: "100.0000000",
+    usdcBalance: "50.0000000",
+    onSuccess: jest.fn(),
+  };
+
+  const validDestination = TEST_PUBLIC_KEY_B;
   beforeEach(() => {
     jest.clearAllMocks();
     mockAddToast.mockReset();

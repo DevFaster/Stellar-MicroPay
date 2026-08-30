@@ -449,8 +449,13 @@ function SendPaymentForm({
     };
   }, [destination]);
 
-  const validateDestinationAccount = useCallback(async (address: string) => {
-    if (!isValidStellarAddress(address)) {
+  // Pre-validate destination account existence on the Stellar network (#294)
+  const destinationValidationRequestRef = useRef(0);
+  const destinationValidationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const validateDestinationAccount = useCallback((rawAddress: string) => {
+    const trimmedAddress = rawAddress.trim();
+    if (!isValidStellarAddress(trimmedAddress)) {
       setDestAccountWarning(null);
       setIsCheckingDest(false);
       return;
@@ -459,33 +464,28 @@ function SendPaymentForm({
     const requestId = ++destinationValidationRequestRef.current;
     setIsCheckingDest(true);
     setDestAccountWarning(null);
-    try {
-      await server.loadAccount(address.trim());
-      if (destinationValidationRequestRef.current === requestId) {
-        setDestAccountWarning(null);
-      }
-    } catch {
-      if (destinationValidationRequestRef.current === requestId) {
-        setDestAccountWarning(
-          selectedAsset === "XLM"
-            ? "This account doesn't exist yet. Sending ≥ 1 XLM will create it."
-            : "This account doesn't exist on the Stellar network."
-        );
-      }
-    } finally {
-      if (destinationValidationRequestRef.current === requestId) {
-        setIsCheckingDest(false);
-      }
-    }
-  }, [selectedAsset, server]);
+    server.loadAccount(trimmedAddress)
+      .then(() => {
+        if (destinationValidationRequestRef.current === requestId) setDestAccountWarning(null);
+      })
+      .catch(() => {
+        if (destinationValidationRequestRef.current === requestId) {
+          setDestAccountWarning(
+            selectedAsset === "XLM"
+              ? "This account doesn't exist yet. Sending ≥ 1 XLM will create it."
+              : "This account doesn't exist on the Stellar network."
+          );
+        }
+      })
+      .finally(() => {
+        if (destinationValidationRequestRef.current === requestId) setIsCheckingDest(false);
+      });
+  }, [selectedAsset]);
 
+  // Pre-validate destination account existence on the Stellar network (#294)
   useEffect(() => {
-    if (!isValidStellarAddress(destination)) {
-      setDestAccountWarning(null);
-      setIsCheckingDest(false);
-      return;
-    }
 
+    const requestId = (destinationValidationRequestRef.current += 1);
     setIsCheckingDest(true);
     setDestAccountWarning(null);
     const requestId = ++destinationValidationRequestRef.current;
@@ -1079,35 +1079,6 @@ function SendPaymentForm({
                 setSnsResolvedAddress(null);
                 setDestAccountWarning(null);
                 setIsContactsDropdownOpen(true);
-
-                // SNS live resolution: trigger for federation/SNS patterns
-                const trimmed = val.trim();
-                const looksLikeRawAddress = trimmed.startsWith("G") && trimmed.length === 56;
-                if (isStellarName(trimmed) && !looksLikeRawAddress) {
-                  // Clear previous SNS state
-                  setSnsResolved(null);
-                  setSnsError(null);
-                  if (snsDebounceRef.current) clearTimeout(snsDebounceRef.current);
-                  setSnsResolving(true);
-                  snsDebounceRef.current = setTimeout(() => {
-                    resolveStellarName(trimmed)
-                      .then((address) => {
-                        setSnsResolved(address);
-                        setSnsError(null);
-                      })
-                      .catch((err: unknown) => {
-                        setSnsResolved(null);
-                        setSnsError(err instanceof Error ? err.message : "Name not found or invalid");
-                      })
-                      .finally(() => setSnsResolving(false));
-                  }, 600);
-                } else {
-                  // Not an SNS name — clear SNS state
-                  if (snsDebounceRef.current) clearTimeout(snsDebounceRef.current);
-                  setSnsResolving(false);
-                  setSnsResolved(null);
-                  setSnsError(null);
-                }
               }}
               onFocus={() => setIsContactsDropdownOpen(true)}
               placeholder="G... address or alice.xlm"
