@@ -8,6 +8,10 @@ const DATA_FILE = path.join(DATA_DIR, "scheduled-transactions.json");
 require("dotenv").config();
 const logger = require("../utils/logger");
 
+const logger = require("../utils/logger");
+
+// In-memory storage for scheduled transactions
+// In a production environment, this would be replaced with a database
 const scheduledTransactions = new Map();
 let transactionIdCounter = 1;
 
