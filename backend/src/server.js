@@ -8,7 +8,7 @@
 const express = require("express");
 const cors = require("cors");
 const helmet = require("helmet");
-const morgan = require("morgan");
+const pinoHttp = require("pino-http");
 const rateLimit = require("express-rate-limit");
 require("dotenv").config();
 
@@ -23,6 +23,7 @@ const tipsRoutes = require("./routes/tips");
 const swaggerUi = require("swagger-ui-express");
 const swaggerSpec = require("./swagger");
 const { startTurretsServer } = require("./turretsServer");
+const logger = require("./logger");
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -30,7 +31,7 @@ const PORT = process.env.PORT || 4000;
 // ─── Middleware ───────────────────────────────────────────────────────────────
 
 app.use(helmet());
-app.use(morgan("dev"));
+app.use(pinoHttp({ logger }));
 app.use(express.json({ limit: "10kb" }));
 
 // JSON parsing error handler
@@ -123,7 +124,7 @@ SERVER = "https://${domain}/federation"
 
 if (require.main === module) {
   app.listen(PORT, () => {
-    console.log(`
+    logger.info(`
   ✨ Stellar MicroPay API
   🚀 Server running at http://localhost:${PORT}
   🌐 Network: ${process.env.STELLAR_NETWORK || "testnet"}
