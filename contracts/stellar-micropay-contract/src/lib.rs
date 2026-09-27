@@ -2622,4 +2622,75 @@ mod tests {
             }
         }
     }
+
+    // ── Full lifecycle integration test (#1103) ─────────────────────────────
+
+    /// #1103 — End-to-end open→claim→close lifecycle.
+    ///
+    /// Exercises the complete stream lifecycle described in the issue, using
+    /// `Ledger::set_sequence_number` to advance the ledger between phases:
+    /// 1. Open a stream (rate=1000, deposit=100000)
+    /// 2. Advance ledger by 50 → claimable = 50_000 stroops
+    /// 3. Claim (expect 50_000 stroops)
+    /// 4. Advance ledger by 100 more (total elapsed = 150)
+    /// 5. Close → refund = deposit − max(total_streamed, claimed)
+    ///
+    /// Run with: `cargo test lifecycle -- --nocapture`
+    #[test]
+    fn test_lifecycle_open_claim_close() {
+        let env = Env::default();
+        let (contract_id, client, token_id, payer, recipient) = stream_fixture(&env, DEPOSIT);
+        let token = token::Client::new(&env, &token_id);
+
+        let rate: i128 = 1_000;
+        let deposit: i128 = 100_000;
+
+        // 1. Open a stream with rate=1000, deposit=100000.
+        let start_ledger = env.ledger().sequence();
+        let id = open_single_stream(&env, &client, &token_id, &payer, &recipient, rate, deposit);
+        println!(
+            "[lifecycle] Opened stream {id} at ledger {start_ledger} (rate={rate}, deposit={deposit})"
+        );
+
+        // 2. Advance ledger by 50 using `Ledger::set_sequence_number`.
+        env.ledger().set_sequence_number(start_ledger + 50);
+        println!(
+            "[lifecycle] Advanced to ledger {} (delta=+50)",
+            env.ledger().sequence()
+        );
+
+        // 3. Claim — expect rate * 50 = 50_000 stroops.
+        let claimed = client.claim_stream(&id, &recipient);
+        let expected_claim: i128 = rate * 50;
+        println!("[lifecycle] Claimed {claimed} (expected {expected_claim})");
+        assert_eq!(claimed, expected_claim);
+        assert_eq!(token.balance(&recipient), expected_claim);
+        assert_eq!(token.balance(&contract_id), deposit - expected_claim);
+
+        // 4. Advance ledger by 100 more (total elapsed = 150).
+        env.ledger().set_sequence_number(start_ledger + 150);
+        println!(
+            "[lifecycle] Advanced to ledger {} (delta=+100)",
+            env.ledger().sequence()
+        );
+
+        // 5. Close — refund = deposit − max(total_streamed, claimed).
+        let stream = client.get_stream(&id);
+        let total_streamed = total_streamed_amount(&stream, env.ledger().sequence());
+        let refund_expected = deposit - std::cmp::max(total_streamed, claimed);
+        println!(
+            "[lifecycle] total_streamed={total_streamed}, claimed={claimed}, refund_expected={refund_expected}"
+        );
+
+        client.close_stream(&id, &payer);
+
+        let refund_actual = token.balance(&payer);
+        println!("[lifecycle] refund_actual={refund_actual}");
+        assert_eq!(refund_actual, refund_expected);
+
+        // After close: recipient holds the full streamed amount, contract drained.
+        assert_eq!(token.balance(&recipient), total_streamed);
+        assert_eq!(token.balance(&contract_id), 0);
+        assert!(client.get_stream(&id).closed);
+    }
 }
