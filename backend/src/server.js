@@ -123,7 +123,7 @@ SERVER = "https://${domain}/federation"
 // ─── Start ────────────────────────────────────────────────────────────────────
 
 if (require.main === module) {
-  app.listen(PORT, () => {
+  const server = app.listen(PORT, () => {
     logger.info(`
   ✨ Stellar MicroPay API
   🚀 Server running at http://localhost:${PORT}
@@ -132,6 +132,18 @@ if (require.main === module) {
   });
 
   startTurretsServer();
+
+  const shutdown = () => {
+    logger.info("Shutting down... clearing timers.");
+    const { stopRunner } = require("./services/turretsService");
+    stopRunner();
+    server.close(() => {
+      process.exit(0);
+    });
+  };
+
+  process.on("SIGTERM", shutdown);
+  process.on("SIGINT", shutdown);
 }
 
 module.exports = app;
