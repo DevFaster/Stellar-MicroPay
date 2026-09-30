@@ -15,6 +15,10 @@ import { Account, Keypair, Transaction } from "@stellar/stellar-sdk";
 const VALID_MAINNET_ADDRESS =
   "GB62CUHQB72WRU3LZFL5BIXMQVQ22MJCDX4FZUBGBQH3PPPPS6INOCLV";
 
+/** Valid mainnet-format address: G + 55 base32 chars (A-Z, 2-7). */
+const VALID_MAINNET_ADDRESS =
+  "GB62CUHQB72WRU3LZFL5BIXMQVQ22MJCDX4FZUBGBQH3PPPPS6INOCLV";
+
 describe("Stellar helper", () => {
   it("builds an account merge transaction using Operation.accountMerge", async () => {
     const sourcePublicKey = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF";
