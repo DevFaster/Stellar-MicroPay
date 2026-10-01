@@ -1077,6 +1077,11 @@ impl MicroPayContract {
 
 #[cfg(test)]
 mod tests {
+    // The crate is `no_std`, so `println!` has to be pulled in from std
+    // explicitly for the diagnostic output in the tests below.
+    extern crate std;
+    use std::println;
+
     use super::*;
     use soroban_sdk::{
         testutils::{Address as _, Events as _, Ledger},
