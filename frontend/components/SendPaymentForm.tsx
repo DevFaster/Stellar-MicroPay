@@ -30,7 +30,6 @@ import {
   STELLAR_MINIMUM_ACCOUNT_BALANCE_XLM,
   submitTransaction,
   truncateMemoText,
-  type StellarMemoType,
 } from "@/lib/stellar";
 import { Federation } from "@stellar/stellar-sdk";
 import { parseHorizonSubmissionError } from "@/lib/horizonErrors";
@@ -39,6 +38,7 @@ import { resolveSNSDomain } from "@/utils/snsResolver";
 import { formatXLM, shortenAddress } from "@/utils/format";
 import clsx from "clsx";
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "@/contexts/I18nContext";
 
 interface SendPaymentFormProps {
   publicKey?: string;
