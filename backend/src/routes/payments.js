@@ -12,6 +12,7 @@ const { validatePublicKey } = require("../middleware/sanitization");
 const { idempotency } = require("../middleware/idempotency");
 const paymentController = require("../controllers/paymentController");
 const { horizonCircuitBreakerMiddleware } = require("../middleware/horizonCircuitBreaker");
+const { requireSignedRequest } = require("../middleware/requestSignature");
 
 /**
  * POST /api/payments/submit

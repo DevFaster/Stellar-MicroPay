@@ -21,6 +21,9 @@ const {
 // Mock Stellar service
 jest.mock("../src/services/stellarService");
 
+// Defined by jest.setup.js; referenced directly by the admin endpoint tests.
+const JWT_SECRET = process.env.JWT_SECRET;
+
 describe("Analytics Service", () => {
   beforeEach(() => {
     jest.clearAllMocks();
