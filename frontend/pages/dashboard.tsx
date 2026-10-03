@@ -1796,7 +1796,7 @@ function PaymentStatsWidget({
     <section className="grid grid-cols-1 gap-4 sm:grid-cols-3 mb-6">
       <StatsCard
         label="Total Sent"
-        value={formatStatsXLM(stats.totalSentXLM)}
+        value={formatStatsXLM(stats.totalSentXLM, t("dashboard.suffixSent"))}
         helper={`${stats.sentCount} outgoing payment${stats.sentCount === 1 ? "" : "s"}`}
         delta={volumeDelta}
         deltaType={typeof volumeDelta === "number" ? (volumeDelta > 0 ? "positive" : volumeDelta < 0 ? "negative" : "neutral") : undefined}
