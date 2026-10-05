@@ -55,7 +55,9 @@ jobs:
       # newly published finding.
       - name: Check audit against allowlist
         env:
-          ALLOWLIST: .github/audit-allowlist.txt
+          # The job's default working-directory is the workspace, so resolve the
+          # allowlist from the repo root rather than a relative path.
+          ALLOWLIST: ${{ github.workspace }}/.github/audit-allowlist.txt
         run: |
           set -euo pipefail
           # Strip comments and blank lines from the allowlist. Guard against an
