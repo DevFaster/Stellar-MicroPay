@@ -1,0 +1,22 @@
+# npm audit allowlist
+#
+# Advisories listed here are *accepted* and do not fail the Security Audit
+# workflow. Each entry needs a comment explaining why, plus a removal condition
+# so the exemption does not quietly become permanent.
+#
+# Only use this for advisories where no patched version exists to upgrade to.
+# If a fix is ever released, delete the entry immediately.
+
+# GHSA-vfj7-8cjw-p6xm — braces <3.0.4, stack exhaustion via deeply nested
+# patterns. `braces@3.0.3` is the newest release on the registry, so there is
+# no version to bump to.
+#
+# Reachable only through dev-only lint/watch tooling, never shipped:
+#   frontend: eslint-config-next -> @next/eslint-plugin-next -> fast-glob -> micromatch -> braces
+#   backend:  nodemon -> chokidar -> braces
+# Both are build/lint-time only; `npm audit --omit=dev` is clean in both
+# workspaces.
+#
+# Removal condition: drop once braces >=3.0.4 ships, or once
+# eslint-config-next and nodemon drop the vulnerable chain.
+GHSA-vfj7-8cjw-p6xm
