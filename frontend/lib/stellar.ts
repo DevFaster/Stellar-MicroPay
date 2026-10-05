@@ -875,105 +875,141 @@ export async function buildAccountMergeTransaction({
   return builder.build();
 }
 
-// ── Custom asset issuance (#1147) ─────────────────────────────────────────
-
-/** Shortest allowed custom asset code. */
-export const ASSET_CODE_MIN_LENGTH = 1;
-
-/** Longest asset code the Stellar protocol accepts. */
-export const ASSET_CODE_MAX_LENGTH = 12;
-
-/** Codes the protocol reserves, e.g. the native asset. */
-export const RESERVED_ASSET_CODES = ["XLM"];
+// ─── Path Payments (#1190) ──────────────────────────────────────────────────
 
 /**
- * Validate a custom asset code.
- *
- * Stellar asset codes are 1–12 characters of uppercase `A–Z` and `0–9`. Spaces,
- * lowercase letters and symbols are rejected, and `XLM` is reserved for the
- * native asset.
- *
- * @param code - The candidate asset code.
- * @returns `null` when the code is valid, otherwise a human-readable reason.
+ * Represents a single path payment route returned by Horizon strictSendPaths.
  */
-export function validateAssetCode(code: string): string | null {
-  if (!code) return "Enter an asset code.";
-
-  if (code.length < ASSET_CODE_MIN_LENGTH || code.length > ASSET_CODE_MAX_LENGTH) {
-    return `Asset code must be between ${ASSET_CODE_MIN_LENGTH} and ${ASSET_CODE_MAX_LENGTH} characters.`;
-  }
-
-  if (/\s/.test(code)) return "Asset code cannot contain spaces.";
-
-  if (!/^[A-Z0-9]+$/.test(code)) {
-    return "Asset code must use uppercase letters and numbers only.";
-  }
-
-  if (RESERVED_ASSET_CODES.includes(code)) {
-    return `${code} is reserved for the native Stellar asset.`;
-  }
-
-  return null;
+export interface PathPaymentRoute {
+  /** The asset sent by the source account. */
+  sourceAsset: Asset;
+  /** Amount the source account sends. */
+  sourceAmount: string;
+  /** The asset received by the destination account. */
+  destinationAsset: Asset;
+  /** Amount the destination account receives. */
+  destinationAmount: string;
+  /** Intermediate assets in the conversion path. */
+  path: Asset[];
+  /** Human-readable exchange rate: destAmount / sourceAmount */
+  exchangeRate: number;
 }
 
 /**
- * Validate a home domain (the domain publishing a SEP-0001 `stellar.toml`).
+ * Query Horizon for the best strict-send paths converting one asset to another via the DEX.
  *
- * @returns `null` when valid or empty (the field is optional).
+ * @param sourceAsset - Asset to send (e.g. XLM native).
+ * @param sourceAmount - Amount to send in string form, e.g. "10.0000000".
+ * @param destinationAsset - Asset the recipient should receive.
+ * @returns Array of available path payment routes, sorted by best destination amount.
  */
-export function validateHomeDomain(domain: string): string | null {
-  if (!domain.trim()) return null;
-
-  const hostname = domain
-    .trim()
-    .replace(/^https?:\/\//i, "")
-    .replace(/\/.*$/, "");
-
-  if (!/^[a-z0-9-]+(\.[a-z0-9-]+)+$/i.test(hostname)) {
-    return "Enter a valid domain, e.g. example.com";
-  }
-
-  return null;
-}
-
-/**
- * Build an unsigned payment of a custom asset from the issuer to a
- * distributor — the "issue" half of asset issuance.
- *
- * The distributor must already hold a trustline for the asset, otherwise
- * Stellar rejects the payment.
- *
- * @throws {Error} If the asset code is invalid or the issuer account cannot be loaded.
- */
-export async function buildAssetIssueTransaction({
-  issuerPublicKey,
-  distributorPublicKey,
-  assetCode,
-  amount,
+export async function findStrictSendPaths({
+  sourceAsset,
+  sourceAmount,
+  destinationAsset,
 }: {
-  issuerPublicKey: string;
-  distributorPublicKey: string;
-  assetCode: string;
-  amount: string;
+  sourceAsset: Asset;
+  sourceAmount: string;
+  destinationAsset: Asset;
+}): Promise<PathPaymentRoute[]> {
+  try {
+    const result = await server
+      .strictSendPaths(sourceAsset, sourceAmount, [destinationAsset])
+      .call();
+
+    return result.records.map((record: any) => {
+      const srcAsset =
+        record.source_asset_type === "native"
+          ? Asset.native()
+          : new Asset(record.source_asset_code, record.source_asset_issuer);
+
+      const destAsset =
+        record.destination_asset_type === "native"
+          ? Asset.native()
+          : new Asset(record.destination_asset_code, record.destination_asset_issuer);
+
+      const intermediaryPath: Asset[] = (record.path || []).map((p: any) =>
+        p.asset_type === "native"
+          ? Asset.native()
+          : new Asset(p.asset_code, p.asset_issuer)
+      );
+
+      const srcAmt = parseFloat(record.source_amount || sourceAmount);
+      const destAmt = parseFloat(record.destination_amount || "0");
+      const exchangeRate = srcAmt > 0 ? destAmt / srcAmt : 0;
+
+      return {
+        sourceAsset: srcAsset,
+        sourceAmount: record.source_amount || sourceAmount,
+        destinationAsset: destAsset,
+        destinationAmount: record.destination_amount || "0",
+        path: intermediaryPath,
+        exchangeRate,
+      };
+    });
+  } catch (err) {
+    console.error("Failed to find strict send paths:", err);
+    return [];
+  }
+}
+
+/**
+ * Build an unsigned pathPaymentStrictSend transaction ready for Freighter to sign.
+ *
+ * Sends an exact `sendAmount` of `sendAsset` and delivers at least `minDestAmount`
+ * of `destAsset` to the recipient. Any DEX conversion happens automatically.
+ *
+ * @param params.fromPublicKey - Sender's Stellar public key.
+ * @param params.toPublicKey - Recipient's Stellar public key.
+ * @param params.sendAsset - Asset being sent (e.g. XLM native).
+ * @param params.sendAmount - Exact amount to send.
+ * @param params.destAsset - Asset to be received by the recipient.
+ * @param params.minDestAmount - Minimum amount recipient should receive (slippage protection).
+ * @param params.path - Intermediate conversion assets found via {@link findStrictSendPaths}.
+ * @param params.memo - Optional memo text.
+ */
+export async function buildPathPaymentStrictSendTransaction({
+  fromPublicKey,
+  toPublicKey,
+  sendAsset,
+  sendAmount,
+  destAsset,
+  minDestAmount,
+  path = [],
+  memo,
+}: {
+  fromPublicKey: string;
+  toPublicKey: string;
+  sendAsset: Asset;
+  sendAmount: string;
+  destAsset: Asset;
+  minDestAmount: string;
+  path?: Asset[];
+  memo?: string;
 }): Promise<Transaction> {
-  const codeError = validateAssetCode(assetCode);
-  if (codeError) throw new Error(codeError);
+  const sourceAccount = await server.loadAccount(fromPublicKey);
 
-  const sourceAccount = await server.loadAccount(issuerPublicKey);
-
-  return new TransactionBuilder(sourceAccount, {
+  const builder = new TransactionBuilder(sourceAccount, {
     fee: STELLAR_BASE_FEE_STROOPS_STRING,
     networkPassphrase: getNetworkPassphrase(),
   })
     .addOperation(
-      Operation.payment({
-        destination: distributorPublicKey,
-        asset: new Asset(assetCode, issuerPublicKey),
-        amount,
+      Operation.pathPaymentStrictSend({
+        sendAsset,
+        sendAmount,
+        destination: toPublicKey,
+        destAsset,
+        destMin: minDestAmount,
+        path,
       })
     )
-    .setTimeout(STELLAR_TRANSACTION_TIMEOUT_SECONDS)
-    .build();
+    .setTimeout(STELLAR_TRANSACTION_TIMEOUT_SECONDS);
+
+  if (memo) {
+    builder.addMemo(Memo.text(truncateMemoText(memo)));
+  }
+
+  return builder.build();
 }
 
 /**

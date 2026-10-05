@@ -13,6 +13,7 @@ import { useWallet } from "@/lib/useWallet";
 import { resetOnboardingTour } from "@/hooks/useOnboarding";
 import { useTranslation } from "@/contexts/I18nContext";
 import { type Locale, SUPPORTED_LOCALES, LOCALE_LABELS } from "@/lib/i18n";
+import WalletHealthPanel from "@/components/WalletHealthPanel";
 
 export default function SettingsPage() {
   const { publicKey, disconnectWallet: disconnectCurrentWallet } = useWallet();
@@ -619,14 +620,9 @@ export default function SettingsPage() {
                 </div>
               </div>
             )}
-            {/* Danger Zone */}
-            <div className="border border-red-500/30 rounded-xl p-6">
-              <h2 className="text-lg font-semibold text-red-500 mb-2">Danger Zone</h2>
-              <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">Removes contacts, settings and cached data stored by Stellar MicroPay.</p>
-              <button onClick={handleClearAllData} className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors">
-                Clear all Stellar MicroPay data
-              </button>
-            </div>
+
+            {/* Wallet Health Check Section - Issue #1192 */}
+            {publicKey && <WalletHealthPanel publicKey={publicKey} />}
           </div>
         </main>
       </div>
