@@ -384,8 +384,10 @@ export default function Dashboard({ stellarURI }: DashboardProps) {
   const balanceHistoryData = useMemo(() => {
     if (!recentPaymentsForStats.length || !xlmBalance) return [];
 
+    // Use a ref to avoid calling Date.now() during render (impure function)
+    const nowRef = useRef(Date.now());
+    const now = nowRef.current;
     const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
-    const now = Date.now();
     const thirtyDaysAgo = now - THIRTY_DAYS_MS;
 
     const payments30d = recentPaymentsForStats
