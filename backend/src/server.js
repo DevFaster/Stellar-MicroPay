@@ -5,11 +5,11 @@
 
 "use strict";
 
-const crypto = require("crypto");
 const express = require("express");
 const cors = require("cors");
 const helmet = require("helmet");
 const pinoHttp = require("pino-http");
+const crypto = require("node:crypto");
 const rateLimit = require("express-rate-limit");
 require("dotenv").config();
 
@@ -55,7 +55,6 @@ function requestId(req, res, next) {
   res.setHeader("X-Request-ID", req.requestId);
   next();
 }
-
 // ─── Middleware ─────────────────────────────────────────────────────────────────
 
 app.use(requestId);
@@ -136,6 +135,7 @@ app.use("/api/analytics", analyticsRoutes);
 app.use("/api/health", healthRoutes);
 app.use("/api/turrets", turretsRoutes);
 app.use("/api/tips", tipsRoutes);
+app.use("/api/contacts", contactsRoutes);
 app.use("/api/webhooks", webhooksRoutes);
 app.use("/api/network", networkRoutes);
 app.use("/api/price-alerts", priceAlertsRoutes);
@@ -187,6 +187,10 @@ SERVER = "https://${domain}/federation"
 // ─── Start ────────────────────────────────────────────────────────────────────
 
 if (require.main === module) {
+  // Refuse to start on an insecure configuration rather than serving traffic
+  // with a publicly-known signing key.
+  validateEnv();
+
   const server = app.listen(PORT, () => {
     logger.info(`
   ✨ Stellar MicroPay API

@@ -18,13 +18,13 @@ import type { Transaction } from "@stellar/stellar-sdk";
 import WalletConnect from "@/components/WalletConnect";
 import {
   ASSET_CODE_MAX_LENGTH,
-  getNetwork,
   assetExplorerUrl,
   buildAssetIssueTransaction,
   buildChangeTrustTransaction,
   buildHomeDomainTransaction,
   buildStellarToml,
   explorerUrl,
+  getNetwork,
   isValidStellarAddress,
   shortenAddress,
   stellarTomlUrl,
@@ -130,7 +130,7 @@ export default function IssueTokenPage() {
         issuerPublicKey: issuer || "G…",
         network,
       }),
-    [homeDomain, assetCode, issuer]
+    [homeDomain, assetCode, issuer, network]
   );
 
   /** Sign with Freighter (verifying the active account) and submit. */
