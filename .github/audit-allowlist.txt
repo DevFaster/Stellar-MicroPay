@@ -20,3 +20,21 @@
 # Removal condition: drop once braces >=3.0.4 ships, or once
 # eslint-config-next and nodemon drop the vulnerable chain.
 GHSA-vfj7-8cjw-p6xm
+
+# GHSA-vc2v-76pw-4v95 — compression <1.8.2, memory leak on premature response
+# close. Reachable via `serve` -> `compression` in frontend dev server tooling.
+# `compression@1.7.4` is pinned by Next.js; 1.8.2 fixes it but would require
+# upgrading `serve` which pulls in broader changes. Dev-only tooling.
+#
+# Removal condition: drop once `compression >=1.8.2` is available through
+# the dependency chain (upgrade `serve` and `next`).
+GHSA-vc2v-76pw-4v95
+
+# GHSA-68fv-2mgg-jv7q — source-map-js event-loop DoS via indexed source-map
+# section offsets. `source-map-js@1.2.2` is current and the advisory applies
+# to all 1.x. No patched release exists yet.
+#
+# Reachable via `tailwindcss` -> `source-map-js` in dev tooling. Dev-only.
+#
+# Removal condition: drop once `source-map-js >=2.x` or patched 1.x ships.
+GHSA-68fv-2mgg-jv7q
