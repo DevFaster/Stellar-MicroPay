@@ -210,6 +210,8 @@ export default function Dashboard({ stellarURI }: DashboardProps) {
   // and screen-reader focus follows the content instead of staying on the
   // now-hidden Connect control (#252).
   const dashboardHeadingRef = useRef<HTMLHeadingElement>(null);
+  // Used inside useMemo to avoid calling Date.now() during render
+  const nowRef = useRef(Date.now());
   useEffect(() => {
     if (publicKey) {
       dashboardHeadingRef.current?.focus();
@@ -384,8 +386,6 @@ export default function Dashboard({ stellarURI }: DashboardProps) {
   const balanceHistoryData = useMemo(() => {
     if (!recentPaymentsForStats.length || !xlmBalance) return [];
 
-    // Use a ref to avoid calling Date.now() during render (impure function)
-    const nowRef = useRef(Date.now());
     const now = nowRef.current;
     const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
     const thirtyDaysAgo = now - THIRTY_DAYS_MS;

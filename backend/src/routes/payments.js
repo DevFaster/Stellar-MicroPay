@@ -41,7 +41,7 @@ router.get("/stream-status/:streamId", strictLimiter, paymentController.getStrea
  * Submit a signed payment. Accepts an optional `X-Idempotency-Key` header (UUID)
  * so retried submissions replay the original response instead of double-spending.
  */
-router.post("/submit", strictLimiter, idempotency, paymentController.submitPayment);
+router.post("/submit", strictLimiter, idempotency, paymentController.submitSignedTransaction);
 
 /**
  * GET /api/payments/:publicKey

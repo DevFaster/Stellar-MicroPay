@@ -122,17 +122,7 @@ async function getPayments(req, res, next) {
  * Safe to retry: when an `X-Idempotency-Key` header is supplied, the
  * idempotency middleware replays the cached response for repeats within 24h.
  */
-async function submitPayment(req, res, next) {
-  try {
-    const { signedXDR } = req.body || {};
-
-    if (!signedXDR) {
-      const error = new Error("signedXDR is required");
-      error.status = 400;
-      throw error;
-    }
-
-    const result = await stellarService.submitTransaction(signedXDR);
+async function submitSignedTransaction(req, res, next) {`n  try {`n    const { signedXDR } = req.body || {};`n`n    if (!signedXDR) {`n      const error = new Error("signedXDR is required");`n      error.status = 400;`n      throw error;`n    }`n`n    const result = await stellarService.submitTransaction(signedXDR);
 
     res.status(200).json({ success: true, data: result });
   } catch (err) {
@@ -194,4 +184,4 @@ async function getStreamStatus(req, res, next) {
   }
 }
 
-module.exports = { getPayments, getStats, getStreamStatus, submitPayment };
+module.exports = { getPayments, getStats, getStreamStatus, submitPayment, submitSignedTransaction };
