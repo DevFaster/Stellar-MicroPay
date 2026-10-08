@@ -5,6 +5,9 @@
  */
 "use strict";
 
+// Set JWT_SECRET before any middleware imports
+process.env.JWT_SECRET = "test-secret-key-for-jest-tests-only-not-for-production";
+
 const express = require("express");
 const request = require("supertest");
 jest.mock("../src/services/streamService");
