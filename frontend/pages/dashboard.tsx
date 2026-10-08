@@ -2142,7 +2142,7 @@ function StatsCard({
   );
 }
 
-function formatStatsXLM(amount: string, suffix = "") {
+function formatStatsXLM(amount: string, suffix: string) {
   const value = parseFloat(amount);
 
   if (Number.isNaN(value)) return `0.00 XLM ${suffix}`.trim();
