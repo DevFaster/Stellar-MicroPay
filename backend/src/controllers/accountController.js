@@ -35,6 +35,28 @@ async function getBalance(req, res, next) {
 }
 
 /**
+ * GET /api/accounts/:publicKey/assets
+ * List all non-native asset trustlines (code, issuer, balance, limit).
+ * Native XLM is excluded — use GET /api/accounts/:publicKey for that.
+ *
+ * @param {object} req - Express request
+ * @param {object} req.params
+ * @param {string} req.params.publicKey - Stellar public key (G...)
+ * @param {object} res - Express response
+ * @param {function} next - Express error-handling callback
+ * @returns {Promise<void>} JSON: `{ success: true, data: Array<{ assetCode: string, assetIssuer: string, balance: string, limit: string }> }`
+ */
+async function getAccountAssets(req, res, next) {
+  try {
+    const { publicKey } = req.params;
+    const assets = await stellarService.getAccountAssets(publicKey);
+    res.json({ success: true, data: assets });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
  * GET /api/accounts/:publicKey/streaks
  *
  * @param {object} req - Express request
@@ -108,4 +130,4 @@ async function hasUSDCTrustline(req, res, next) {
   }
 }
 
-module.exports = { getAccount, getBalance, getStreaks, registerUsername, resolveUsername, hasUSDCTrustline };
+module.exports = { getAccount, getBalance, getAccountAssets, getStreaks, registerUsername, resolveUsername, hasUSDCTrustline };
