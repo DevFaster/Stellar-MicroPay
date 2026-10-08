@@ -210,8 +210,11 @@ export default function Dashboard({ stellarURI }: DashboardProps) {
   // and screen-reader focus follows the content instead of staying on the
   // now-hidden Connect control (#252).
   const dashboardHeadingRef = useRef<HTMLHeadingElement>(null);
-  // Used inside useMemo to avoid calling Date.now() during render
+  // Used inside useMemo to provide a stable reference for Date.now()
   const nowRef = useRef(Date.now());
+  useEffect(() => {
+    nowRef.current = Date.now();
+  });
   useEffect(() => {
     if (publicKey) {
       dashboardHeadingRef.current?.focus();
