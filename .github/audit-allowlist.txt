@@ -45,4 +45,10 @@ GHSA-vc2v-76pw-4v95
 # Reachable via `tailwindcss` -> `source-map-js` in dev tooling. Dev-only.
 #
 # Removal condition: drop once `source-map-js >=2.x` or patched 1.x ships.
-GHSA-68fv-2mgg-jv7q
+GHSA-68fv-2mgg-jv7q# GHSA-wq5f-xc86-pv6w â€” sharp <0.35.5, librsvg vulnerability CVE-2026-96889.
+# `sharp@0.35.4` is current in the lockfile; 0.35.5+ fixes it but upgrading
+# requires a lockfile regeneration that currently times out in CI. Dev-only
+# tooling (used by `next/image` optimization during build).
+#
+# Removal condition: drop once lockfile is regenerated with sharp >=0.35.5.
+GHSA-wq5f-xc86-pv6w
