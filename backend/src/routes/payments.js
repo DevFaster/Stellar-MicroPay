@@ -10,6 +10,7 @@ const router = express.Router();
 const { strictLimiter } = require("../middleware/rateLimit");
 const { validatePublicKey } = require("../middleware/sanitization");
 const { idempotency } = require("../middleware/idempotency");
+const { requireSignedRequest } = require("../middleware/requestSignature");
 const paymentController = require("../controllers/paymentController");
 const { horizonCircuitBreakerMiddleware } = require("../middleware/horizonCircuitBreaker");
 
