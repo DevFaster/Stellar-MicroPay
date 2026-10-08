@@ -6,7 +6,41 @@
 "use strict";
 
 const stellarService = require("../services/stellarService");
-const { validateSubmission } = require("../middleware/validation");
+
+const STELLAR_PUBLIC_KEY_RE = /^G[A-Z2-7]{55}$/;
+
+/**
+ * Validate the body of a payment submission.
+ */
+function validateSubmission({ senderPublicKey, recipientPublicKey, amount, asset, txHash }) {
+  if (!STELLAR_PUBLIC_KEY_RE.test(String(senderPublicKey || ""))) {
+    return { ok: false, error: "senderPublicKey must be a valid Stellar public key" };
+  }
+  if (!STELLAR_PUBLIC_KEY_RE.test(String(recipientPublicKey || ""))) {
+    return { ok: false, error: "recipientPublicKey must be a valid Stellar public key" };
+  }
+  if (senderPublicKey === recipientPublicKey) {
+    return { ok: false, error: "recipientPublicKey must differ from senderPublicKey" };
+  }
+
+  const parsed = Number(amount);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return { ok: false, error: "amount must be a positive number" };
+  }
+  if (parsed < 0.0000001) {
+    return { ok: false, error: "amount is below the minimum representable precision" };
+  }
+
+  if (asset && !["XLM", "USDC"].includes(asset)) {
+    return { ok: false, error: "asset must be XLM or USDC" };
+  }
+
+  if (txHash && typeof txHash !== "string") {
+    return { ok: false, error: "txHash must be a string" };
+  }
+
+  return { ok: true, value: { senderPublicKey, recipientPublicKey, amount: parsed, asset, txHash } };
+}
 
 /**
  * POST /api/payments/submit
