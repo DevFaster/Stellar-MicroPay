@@ -254,7 +254,7 @@ export default function Navbar({ onOpenAssistant }: NavbarProps) {
                     : "text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-white/5 dark:hover:text-slate-200"
                 )}
               >
-                {link.label}
+                {t(link.label)}
               </Link>
             ))}
           </div>

@@ -64,7 +64,7 @@ async function getAccountAssets(req, res, next) {
  * @param {string} req.params.publicKey - Stellar public key (G...)
  * @param {object} res - Express response
  * @param {function} next - Express error-handling callback
- * @returns {Promise<void>} JSON: `{ currentStreak: number, longestStreak: number, lastTransactionDate: string }`
+ * @returns {Promise<void>} JSON containing current and longest streaks.
  */
 async function getStreaks(req, res, next) {
   try {
