@@ -10,11 +10,15 @@ import { useRouter } from "next/router";
 import Head from "next/head";
 import Navbar from "@/components/Navbar";
 import ErrorBoundary from "@/components/ErrorBoundary";
-import QuickSendModal from "@/components/QuickSendModal";
 import { WalletProvider, useWallet } from "@/lib/useWallet";
 import ToastProvider from "@/lib/ToastContext";
 
 const AIPaymentAssistant = dynamic(() => import("@/components/AIPaymentAssistant"), {
+  ssr: false,
+});
+// Lazy-load the quick-send modal: it pulls in the full Stellar SDK and only
+// mounts for connected wallets, so keep it out of the initial bundle.
+const QuickSendModal = dynamic(() => import("@/components/QuickSendModal"), {
   ssr: false,
 });
 import {
@@ -102,8 +106,10 @@ function InstallBanner() {
   );
 }
 
+export type ThemePreference = "dark" | "light" | "system";
+
 interface ThemeContextType {
-  theme: "dark" | "light";
+  theme: ThemePreference;
   toggleTheme: () => void;
 }
 
@@ -130,6 +136,17 @@ function AppShell({
   const { publicKey } = useWallet();
   const router = useRouter();
   const [isAssistantOpen, setIsAssistantOpen] = useState(false);
+  const [isOffline, setIsOffline] = useState(false);
+  useEffect(() => {
+    const updateOffline = () => setIsOffline(!navigator.onLine);
+    updateOffline();
+    window.addEventListener("online", updateOffline);
+    window.addEventListener("offline", updateOffline);
+    return () => {
+      window.removeEventListener("online", updateOffline);
+      window.removeEventListener("offline", updateOffline);
+    };
+  }, []);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -159,6 +176,9 @@ function AppShell({
 
   return (
     <>
+      {isOffline && (
+        <div role="alert" className="w-full bg-amber-500/15 px-4 py-2 text-center text-sm text-amber-200">You&apos;re offline — data may not be up to date.</div>
+      )}
       <div className="min-h-screen bg-white bg-grid transition-colors duration-300 dark:bg-cosmos-900">
         <Navbar onOpenAssistant={() => setIsAssistantOpen(true)} />
         <main>
@@ -187,21 +207,23 @@ function AppShell({
 }
 
 export default function App({ Component, pageProps }: AppProps) {
-  const [theme, setTheme] = useState<"dark" | "light">("dark");
+  const [theme, setTheme] = useState<ThemePreference>("system");
   const [stellarURI, setStellarURI] = useState<URIParseResult | null>(null);
   const [isQuickSendOpen, setIsQuickSendOpen] = useState(false);
 
   useEffect(() => {
-    const saved = localStorage.getItem("stellar-micropay:theme") as
-      | "dark"
-      | "light"
-      | null;
-    const preferred =
-      saved ??
-      (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
-
-    setTheme(preferred);
-    document.documentElement.classList.toggle("dark", preferred === "dark");
+    const saved = localStorage.getItem("stellar-micropay:theme") as ThemePreference | null;
+    const preference = saved === "dark" || saved === "light" || saved === "system" ? saved : "system";
+    const apply = () => {
+      const dark = preference === "dark" ||
+        (preference === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+      document.documentElement.classList.toggle("dark", dark);
+    };
+    setTheme(preference);
+    apply();
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    media.addEventListener("change", apply);
+    return () => media.removeEventListener("change", apply);
   }, []);
 
   useEffect(() => {
@@ -234,9 +256,11 @@ export default function App({ Component, pageProps }: AppProps) {
   }, []);
 
   const toggleTheme = () => {
-    const nextTheme = theme === "dark" ? "light" : "dark";
+    const nextTheme: ThemePreference = theme === "light" ? "system" : theme === "system" ? "dark" : "light";
     setTheme(nextTheme);
-    document.documentElement.classList.toggle("dark", nextTheme === "dark");
+    const dark = nextTheme === "dark" ||
+      (nextTheme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+    document.documentElement.classList.toggle("dark", dark);
     localStorage.setItem("stellar-micropay:theme", nextTheme);
   };
 

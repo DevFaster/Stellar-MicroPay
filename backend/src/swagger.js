@@ -5,7 +5,14 @@
 
 "use strict";
 
+const path = require("path");
+
 const swaggerJsdoc = require("swagger-jsdoc");
+
+// Route files scanned for JSDoc `@swagger` annotations. Federation, analytics,
+// and turrets operations are documented in their route files; the remaining
+// operations are defined statically in `definition.paths` below.
+const routesGlob = `${path.join(__dirname, "routes").split(path.sep).join("/")}/*.js`;
 
 const options = {
   definition: {
@@ -27,6 +34,14 @@ const options = {
       },
     ],
     components: {
+      securitySchemes: {
+        bearerAuth: {
+          type: "http",
+          scheme: "bearer",
+          bearerFormat: "JWT",
+          description: "SEP-0010 JWT obtained from POST /api/auth",
+        },
+      },
       schemas: {
         Error: {
           type: "object",
@@ -77,25 +92,86 @@ const options = {
             publicKey: { type: "string" },
             totalSentXLM: { type: "string" },
             totalReceivedXLM: { type: "string" },
-            sentCount: { type: "integer" },
-            receivedCount: { type: "integer" },
+            uniqueCounterparties: { type: "integer" },
+            averageTransactionSize: { type: "string" },
             totalTransactions: { type: "integer" },
           },
         },
         TopRecipient: {
           type: "object",
           properties: {
-            publicKey: { type: "string" },
-            totalXLM: { type: "string" },
-            count: { type: "integer" },
+            address: { type: "string" },
+            totalXLMSent: { type: "string" },
           },
         },
         ActivityDay: {
           type: "object",
           properties: {
-            date: { type: "string", format: "date" },
-            totalXLM: { type: "string" },
-            count: { type: "integer" },
+            day: { type: "string", example: "Monday" },
+            dayIndex: { type: "integer", minimum: 0, maximum: 6 },
+            transactionCount: { type: "integer" },
+          },
+        },
+        TurretsChallenge: {
+          type: "object",
+          properties: {
+            challengeXDR: {
+              type: "string",
+              description: "ManageData challenge transaction to sign and deploy.",
+            },
+            deploymentHash: { type: "string" },
+            normalizedConfig: {
+              type: "object",
+              description: "Configuration after validation and normalization.",
+            },
+            networkPassphrase: { type: "string" },
+          },
+        },
+        TxFunctionDeployment: {
+          type: "object",
+          properties: {
+            id: { type: "string", format: "uuid" },
+            ownerPublicKey: { type: "string" },
+            type: { type: "string", enum: ["dca", "stop_loss"] },
+            status: { type: "string", enum: ["active", "paused"] },
+            config: { type: "object" },
+            deploymentHash: { type: "string" },
+            signedChallengeXDR: { type: "string" },
+            createdAt: { type: "string", format: "date-time" },
+            nextRunAt: {
+              type: "string",
+              format: "date-time",
+              nullable: true,
+            },
+            lastExecutedAt: {
+              type: "string",
+              format: "date-time",
+              nullable: true,
+            },
+            lastCheckedAt: {
+              type: "string",
+              format: "date-time",
+              nullable: true,
+            },
+            lastObservedPriceUsd: {
+              type: "number",
+              nullable: true,
+            },
+            lastError: {
+              type: "string",
+              nullable: true,
+            },
+          },
+        },
+        ExecutionLogEntry: {
+          type: "object",
+          properties: {
+            id: { type: "string", format: "uuid" },
+            deploymentId: { type: "string", format: "uuid" },
+            status: { type: "string", example: "executed" },
+            message: { type: "string" },
+            result: { type: "object", nullable: true },
+            createdAt: { type: "string", format: "date-time" },
           },
         },
         AccountBalance: {
@@ -116,6 +192,31 @@ const options = {
               items: { $ref: "#/components/schemas/AccountBalance" },
             },
             subentryCount: { type: "integer" },
+          },
+        },
+        AssetTrustline: {
+          type: "object",
+          properties: {
+            assetCode: { type: "string", description: "Asset code (e.g. USDC)" },
+            assetIssuer: { type: "string", description: "Issuing account public key" },
+            balance: { type: "string", description: "Held balance" },
+            limit: { type: "string", description: "Trustline limit" },
+          },
+        },
+        StreamStatus: {
+          type: "object",
+          properties: {
+            payer: { type: "string", description: "Payer Stellar address (contract Address)" },
+            recipient: {
+              type: "string",
+              nullable: true,
+              description: "First recipient address, or null when the stream has none",
+            },
+            ratePerLedger: { type: "string", description: "Tokens accrued per ledger (i128 as string)" },
+            deposited: { type: "string", description: "Total deposited into the stream (i128 as string)" },
+            claimed: { type: "string", description: "Total claimed by all recipients so far (i128 as string)" },
+            startLedger: { type: "integer", description: "Ledger the stream started at" },
+            claimableNow: { type: "string", description: "Derived unclaimed amount as of the latest ledger (i128 as string)" },
           },
         },
         Tip: {
@@ -306,7 +407,48 @@ const options = {
           },
         },
       },
+      "/api/accounts/{publicKey}/assets": {
+        get: {
+          tags: ["Accounts"],
+          summary: "List non-native asset trustlines",
+          description:
+            "Returns every non-native balance the account holds a trustline for. " +
+            "Native XLM is excluded — use `/api/accounts/{publicKey}` for full balances. " +
+            "Requires a SEP-0010 JWT.",
+          parameters: [
+            {
+              name: "publicKey",
+              in: "path",
+              required: true,
+              schema: { type: "string", pattern: "^G[A-Z0-9]{55}$" },
+            },
+          ],
+          responses: {
+            200: {
+              description: "Non-native asset trustlines",
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    properties: {
+                      success: { type: "boolean" },
+                      data: {
+                        type: "array",
+                        items: { $ref: "#/components/schemas/AssetTrustline" },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            401: { description: "Missing, invalid, or expired JWT" },
+            404: { description: "Account not found" },
+            429: { description: "Rate limit exceeded" },
+          },
+        },
+      },
       "/api/accounts/resolve/{username}": {
+
         get: {
           tags: ["Accounts"],
           summary: "Resolve a username to a Stellar public key",
@@ -416,6 +558,46 @@ const options = {
           },
         },
       },
+      "/api/payments/stream-status/{streamId}": {
+        get: {
+          tags: ["Payments"],
+          summary: "Get streaming payment channel state from the Soroban contract",
+          description:
+            "Reads the `Stream` entry from the deployed MicroPay contract's persistent storage " +
+            "via Soroban RPC `getContractData` and returns its current state. The contract ID is " +
+            "configured with the `CONTRACT_ID` environment variable. `claimableNow` mirrors the " +
+            "contract's accrual logic (paused ledgers excluded, capped at the funded window).",
+          parameters: [
+            {
+              name: "streamId",
+              in: "path",
+              required: true,
+              schema: { type: "integer", minimum: 0, maximum: 4294967295 },
+              description: "u32 stream id stored in the contract",
+            },
+          ],
+          responses: {
+            200: {
+              description: "Current stream state",
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    properties: {
+                      success: { type: "boolean" },
+                      data: { $ref: "#/components/schemas/StreamStatus" },
+                    },
+                  },
+                },
+              },
+            },
+            400: { description: "streamId is not an unsigned 32-bit integer" },
+            404: { description: "Stream not found in contract storage" },
+            503: { description: "CONTRACT_ID not configured or Soroban RPC unavailable" },
+            429: { description: "Rate limit exceeded" },
+          },
+        },
+      },
       "/api/payments/{publicKey}/stats": {
         get: {
           tags: ["Payments"],
@@ -438,104 +620,6 @@ const options = {
                     properties: {
                       success: { type: "boolean" },
                       data: { $ref: "#/components/schemas/PaymentStats" },
-                    },
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
-      "/api/analytics/{publicKey}/summary": {
-        get: {
-          tags: ["Analytics"],
-          summary: "Get payment summary for an account",
-          parameters: [
-            {
-              name: "publicKey",
-              in: "path",
-              required: true,
-              schema: { type: "string", pattern: "^G[A-Z0-9]{55}$" },
-            },
-          ],
-          responses: {
-            200: {
-              description: "Analytics summary",
-              content: {
-                "application/json": {
-                  schema: {
-                    type: "object",
-                    properties: {
-                      success: { type: "boolean" },
-                      data: { $ref: "#/components/schemas/AnalyticsSummary" },
-                    },
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
-      "/api/analytics/{publicKey}/top-recipients": {
-        get: {
-          tags: ["Analytics"],
-          summary: "Get top payment recipients",
-          parameters: [
-            {
-              name: "publicKey",
-              in: "path",
-              required: true,
-              schema: { type: "string", pattern: "^G[A-Z0-9]{55}$" },
-            },
-          ],
-          responses: {
-            200: {
-              description: "Top recipients",
-              content: {
-                "application/json": {
-                  schema: {
-                    type: "object",
-                    properties: {
-                      success: { type: "boolean" },
-                      data: {
-                        type: "array",
-                        items: {
-                          $ref: "#/components/schemas/TopRecipient",
-                        },
-                      },
-                    },
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
-      "/api/analytics/{publicKey}/activity": {
-        get: {
-          tags: ["Analytics"],
-          summary: "Get payment activity by day",
-          parameters: [
-            {
-              name: "publicKey",
-              in: "path",
-              required: true,
-              schema: { type: "string", pattern: "^G[A-Z0-9]{55}$" },
-            },
-          ],
-          responses: {
-            200: {
-              description: "Activity data",
-              content: {
-                "application/json": {
-                  schema: {
-                    type: "object",
-                    properties: {
-                      success: { type: "boolean" },
-                      data: {
-                        type: "array",
-                        items: { $ref: "#/components/schemas/ActivityDay" },
-                      },
                     },
                   },
                 },
@@ -687,7 +771,7 @@ const options = {
               properties: { url: { type: "string", format: "uri" }, publicKey: { type: "string" }, secret: { type: "string", format: "password" } },
             } } },
           },
-          responses: { 201: { description: "Webhook registered", content: { "application/json": { schema: { $ref: "#/components/schemas/SuccessResponse" } } } }, 400: { description: "Invalid registration" } },
+          responses: { 201: { description: "Webhook registered", content: { "application/json": { schema: { $ref: "#/components/schemas/SuccessResponse" } } } }, 400: { description: "Invalid registration payload" } },
         },
       },
       "/api/webhooks/{id}": {
@@ -698,52 +782,33 @@ const options = {
           responses: { 204: { description: "Webhook removed" }, 404: { description: "Webhook not found" } },
         },
       },
-      "/api/turrets": {
+      "/api/events/stream": {
         get: {
-          tags: ["Turrets"],
-          summary: "List deployed turrets",
-          responses: {
-            200: { description: "List of turrets" },
-          },
-        },
-      },
-      "/api/turrets/challenge": {
-        post: {
-          tags: ["Turrets"],
-          summary: "Get a turrets authentication challenge",
-          responses: {
-            200: { description: "Challenge data" },
-          },
-        },
-      },
-      "/federation": {
-        get: {
-          tags: ["Federation"],
-          summary: "SEP-0002 federation endpoint",
+          tags: ["Events"],
+          summary: "Stream Soroban contract events (Server-Sent Events)",
+          description:
+            "Opens a `text/event-stream` connection. Each message is a JSON envelope with a `kind` of `ready`, `event` or `status`.",
           parameters: [
             {
-              name: "q",
+              name: "cursor",
               in: "query",
-              required: true,
+              required: false,
               schema: { type: "string" },
-              description: "Query string (username or Stellar address)",
-            },
-            {
-              name: "type",
-              in: "query",
-              required: true,
-              schema: { type: "string", enum: ["name", "id", "tx_id"] },
-              description: "Query type",
+              description: "Resume from a paging cursor returned by Soroban RPC",
             },
           ],
           responses: {
-            200: { description: "Federation record" },
+            200: {
+              description: "Event stream",
+              content: { "text/event-stream": { schema: { type: "string" } } },
+            },
           },
         },
       },
     },
   },
-  apis: [],
+  apis: [routesGlob],
 };
 
 module.exports = swaggerJsdoc(options);
+
