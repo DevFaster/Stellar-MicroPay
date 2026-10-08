@@ -223,8 +223,8 @@ export default function Dashboard({ stellarURI }: DashboardProps) {
   const [staleBalanceAt, setStaleBalanceAt] = useState<number | null>(null);
   const [xlmPrice, setXlmPrice] = useState<number | null>(null);
   const [fiatCurrency, setFiatCurrency] = useState("USD");
-  // Computed once per render to avoid "impure function" lint error in useMemo
-  const now = Date.now();
+  // Computed once per render to avoid "impure function" lint error
+  const now = useMemo(() => Date.now(), []);
   useEffect(() => { const saved = localStorage.getItem("stellar-micropay:fiat") || "USD"; setFiatCurrency(saved); const id = setInterval(() => setFiatCurrency(localStorage.getItem("stellar-micropay:fiat") || "USD"), 60000); return () => clearInterval(id); }, []);
   const fiatRate = ({ USD: 1, EUR: 0.92, BRL: 5.4, GBP: 0.79 } as Record<string, number>)[fiatCurrency] ?? 1;
   const fiatSymbol = ({ USD: "$", EUR: "€", BRL: "R$", GBP: "£" } as Record<string, string>)[fiatCurrency] ?? "$";
