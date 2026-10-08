@@ -46,13 +46,13 @@ router.get(
  * GET /api/tips/sent/:senderPublicKey
  * Get all tips sent by a user.
  */
-  router.get("/sent/:senderPublicKey", strictLimiter, validatePublicKey("senderPublicKey"), tipsController.getTipsSent);
+router.get("/sent/:senderPublicKey", strictLimiter, validatePublicKey("senderPublicKey"), tipsController.getTipsSent);
 
 /**
  * GET /api/tips/leaderboard/:creatorPublicKey
  * Get top tippers for a creator.
  */
-  router.get("/leaderboard/:creatorPublicKey", strictLimiter, validatePublicKey("creatorPublicKey"), tipsController.getTopTippers);
+router.get("/leaderboard/:creatorPublicKey", strictLimiter, validatePublicKey("creatorPublicKey"), tipsController.getTopTippers);
 
 /**
  * GET /api/tips/leaderboard
