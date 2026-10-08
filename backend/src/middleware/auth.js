@@ -52,11 +52,16 @@
 const jwt = require("jsonwebtoken");
 
 // Require JWT_SECRET environment variable - no default value for security
+// In test environment, allow a default for convenience
 if (!process.env.JWT_SECRET) {
-  throw new Error(
-    "FATAL: JWT_SECRET environment variable is not set. " +
-    "Generate a secure secret with: openssl rand -base64 48"
-  );
+  if (process.env.NODE_ENV === "test") {
+    process.env.JWT_SECRET = "test-secret-key-for-jest-tests-only-not-for-production";
+  } else {
+    throw new Error(
+      "FATAL: JWT_SECRET environment variable is not set. " +
+      "Generate a secure secret with: openssl rand -base64 48"
+    );
+  }
 }
 
 const JWT_SECRET = process.env.JWT_SECRET;
