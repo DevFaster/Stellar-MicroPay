@@ -9,6 +9,7 @@ const express = require("express");
 const router = express.Router();
 const { strictLimiter } = require("../middleware/rateLimit");
 const { validatePublicKey, sanitizeUsername } = require("../middleware/sanitization");
+const { verifyJWT } = require("../middleware/auth");
 const accountController = require("../controllers/accountController");
 const { horizonCircuitBreakerMiddleware } = require("../middleware/horizonCircuitBreaker");
 
@@ -50,10 +51,11 @@ router.get("/:publicKey/balance", strictLimiter, validatePublicKey(), horizonCir
 router.get("/:publicKey/streaks", strictLimiter, validatePublicKey(), accountController.getStreaks);
 
 /**
- * GET /api/accounts/:publicKey/streaks
- * Fetch user's transaction streak.
+ * GET /api/accounts/:publicKey/assets
+ * List all non-native asset trustlines (code, issuer, balance, limit) (#1065).
+ * Requires a valid SEP-0010 JWT.
  */
-router.get("/:publicKey/streaks", strictLimiter, sanitizePublicKey, accountController.getStreaks);
+router.get("/:publicKey/assets", strictLimiter, verifyJWT, validatePublicKey(), accountController.getAccountAssets);
 
 /**
  * GET /api/accounts/:publicKey/memo-history

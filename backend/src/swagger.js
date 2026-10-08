@@ -126,6 +126,15 @@ const options = {
             subentryCount: { type: "integer" },
           },
         },
+        AssetTrustline: {
+          type: "object",
+          properties: {
+            assetCode: { type: "string", description: "Asset code (e.g. USDC)" },
+            assetIssuer: { type: "string", description: "Issuing account public key" },
+            balance: { type: "string", description: "Held balance" },
+            limit: { type: "string", description: "Trustline limit" },
+          },
+        },
         StreamStatus: {
           type: "object",
           properties: {
@@ -330,11 +339,14 @@ const options = {
           },
         },
       },
-      "/api/accounts/{publicKey}/memo-history": {
+      "/api/accounts/{publicKey}/assets": {
         get: {
           tags: ["Accounts"],
-          summary: "Get recently used distinct memo texts for an account",
-          security: [{ bearerAuth: [] }],
+          summary: "List non-native asset trustlines",
+          description:
+            "Returns every non-native balance the account holds a trustline for. " +
+            "Native XLM is excluded — use `/api/accounts/{publicKey}` for full balances. " +
+            "Requires a SEP-0010 JWT.",
           parameters: [
             {
               name: "publicKey",
@@ -345,7 +357,7 @@ const options = {
           ],
           responses: {
             200: {
-              description: "Array of distinct memo texts",
+              description: "Non-native asset trustlines",
               content: {
                 "application/json": {
                   schema: {
@@ -354,15 +366,16 @@ const options = {
                       success: { type: "boolean" },
                       data: {
                         type: "array",
-                        items: { type: "string" },
+                        items: { $ref: "#/components/schemas/AssetTrustline" },
                       },
                     },
                   },
                 },
               },
             },
-            401: { description: "Unauthorized: missing or invalid token" },
-            400: { description: "Invalid public key" },
+            401: { description: "Missing, invalid, or expired JWT" },
+            404: { description: "Account not found" },
+            429: { description: "Rate limit exceeded" },
           },
         },
       },
