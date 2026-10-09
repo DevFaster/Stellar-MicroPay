@@ -95,6 +95,7 @@ import { getJwtToken } from "@/lib/auth";
 import { URIParseResult, uriToPrefillData } from "@/lib/sep0007";
 import { useWallet } from "@/lib/useWallet";
 import { useOnboarding } from "@/hooks/useOnboarding";
+import { useTranslation } from "@/contexts/I18nContext";
 
 interface DashboardProps {
   stellarURI?: URIParseResult | null;
@@ -379,15 +380,19 @@ export default function Dashboard({ stellarURI }: DashboardProps) {
   const [topRecipients, setTopRecipients] = useState<Array<{ address: string; totalXLMSent: string }>>([]);
   const [topRecipientsLoading, setTopRecipientsLoading] = useState(false);
   const [csvExporting, setCsvExporting] = useState(false);
+  const [balanceHistoryNow, setBalanceHistoryNow] = useState<number | null>(null);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setBalanceHistoryNow(Date.now()), 0);
+    return () => window.clearTimeout(timer);
+  }, []);
 
   // Balance history calculation over past 30 days (#1188)
-  // Snapshot the clock outside useMemo so the hook callback stays pure —
-  // react-hooks/purity flags Date.now() called during render.
-  const now = Date.now();
-  const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
-  const thirtyDaysAgo = now - THIRTY_DAYS_MS;
   const balanceHistoryData = useMemo(() => {
-    if (!recentPaymentsForStats.length || !xlmBalance) return [];
+    if (!recentPaymentsForStats.length || !xlmBalance || balanceHistoryNow === null) return [];
+
+    const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+    const thirtyDaysAgo = balanceHistoryNow - THIRTY_DAYS_MS;
 
     const payments30d = recentPaymentsForStats
       .filter((p) => new Date(p.createdAt).getTime() >= thirtyDaysAgo)
@@ -427,7 +432,7 @@ export default function Dashboard({ stellarURI }: DashboardProps) {
     }
 
     return points;
-  }, [recentPaymentsForStats, xlmBalance, thirtyDaysAgo]);
+  }, [recentPaymentsForStats, xlmBalance, balanceHistoryNow]);
 
   // Notification state
   const [notificationEnabled, setNotificationEnabled] = useState(false);
@@ -2137,7 +2142,7 @@ function StatsCard({
   );
 }
 
-function formatStatsXLM(amount: string, suffix = "") {
+function formatStatsXLM(amount: string, suffix: string) {
   const value = parseFloat(amount);
 
   if (Number.isNaN(value)) return `0.00 XLM ${suffix}`.trim();

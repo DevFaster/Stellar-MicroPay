@@ -2,7 +2,7 @@ FROM node:20.19.5-alpine
 
 WORKDIR /app
 
-# Install curl for healthchecks
+# Install curl for the container health check
 RUN apk add --no-cache curl
 
 # Install dependencies
@@ -14,5 +14,7 @@ COPY . .
 
 # Expose port 4000
 EXPOSE 4000
+
+HEALTHCHECK CMD curl -f http://localhost:4000/health || exit 1
 
 CMD ["node", "src/server.js"]
