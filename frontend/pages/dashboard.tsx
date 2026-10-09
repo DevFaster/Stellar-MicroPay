@@ -381,12 +381,13 @@ export default function Dashboard({ stellarURI }: DashboardProps) {
   const [csvExporting, setCsvExporting] = useState(false);
 
   // Balance history calculation over past 30 days (#1188)
+  // Snapshot the clock outside useMemo so the hook callback stays pure —
+  // react-hooks/purity flags Date.now() called during render.
+  const now = Date.now();
+  const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+  const thirtyDaysAgo = now - THIRTY_DAYS_MS;
   const balanceHistoryData = useMemo(() => {
     if (!recentPaymentsForStats.length || !xlmBalance) return [];
-
-    const now = Date.now();
-    const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
-    const thirtyDaysAgo = now - THIRTY_DAYS_MS;
 
     const payments30d = recentPaymentsForStats
       .filter((p) => new Date(p.createdAt).getTime() >= thirtyDaysAgo)
@@ -426,7 +427,7 @@ export default function Dashboard({ stellarURI }: DashboardProps) {
     }
 
     return points;
-  }, [recentPaymentsForStats, xlmBalance]);
+  }, [recentPaymentsForStats, xlmBalance, thirtyDaysAgo]);
 
   // Notification state
   const [notificationEnabled, setNotificationEnabled] = useState(false);

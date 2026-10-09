@@ -38,6 +38,9 @@ describe("GET /api/payments/stream-status/:streamId (#1066)", () => {
   const app = buildApp();
 
   beforeEach(() => {
+    // Ensure JWT_SECRET is set before any module imports (auth middleware
+    // requires it at module load time)
+    process.env.JWT_SECRET = "test-secret-key-for-jest-tests-only-not-for-production";
     jest.clearAllMocks();
   });
 
